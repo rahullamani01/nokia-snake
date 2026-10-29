@@ -39,23 +39,21 @@
     z-index:2;
   }
 
+  .nav canvas{ display:block; }
+
   .logo{
     display:flex;
     align-items:center;
-    gap:10px;
-    font-size:clamp(11px, 1.5vw, 14px);
-    font-weight:800;
-    letter-spacing:.42em;
-    text-indent:.42em;
-    color:#cfe3a2;
-    text-shadow:0 0 18px rgba(185,209,140,.35);
+    gap:clamp(8px, 1.4vw, 14px);
   }
+  .logo canvas{ filter:drop-shadow(0 0 10px rgba(185,209,140,.4)); }
   .logo i{
     width:7px; height:7px; border-radius:50%;
     background:#9fe06f;
     box-shadow:0 0 10px #9fe06f;
     animation:blink 2.4s ease-in-out infinite;
     font-style:normal;
+    flex:0 0 auto;
   }
   @keyframes blink{
     0%, 100%{ opacity:1; }
@@ -65,39 +63,23 @@
   .stats{
     display:flex;
     align-items:center;
-    gap:clamp(12px, 3vw, 28px);
+    gap:clamp(16px, 3.4vw, 36px);
   }
 
   .stat{
     display:flex;
     flex-direction:column;
     align-items:flex-end;
-    gap:2px;
-    min-width:clamp(62px, 8vw, 96px);
-  }
-  .stat .label{
-    font-size:clamp(8px, 1vw, 10px);
-    letter-spacing:.22em;
-    text-indent:.22em;
-    color:#6a8350;
-    font-weight:700;
+    gap:7px;
   }
   .stat .value{
-    font-size:clamp(17px, 2.4vw, 26px);
-    font-weight:800;
-    line-height:1;
-    color:#d8f0a8;
-    font-variant-numeric:tabular-nums;
-    letter-spacing:.06em;
-    text-shadow:0 0 16px rgba(185,209,140,.35);
     transform-origin:right center;
+    filter:drop-shadow(0 0 12px rgba(185,209,140,.3));
   }
-  .stat.best .value{ color:#9fbf72; }
-
-  .value.pop{ animation:pop .2s cubic-bezier(.2,.9,.3,1.4); }
+  .stat .value.pop{ animation:pop .2s cubic-bezier(.2,.9,.3,1.4); }
   @keyframes pop{
     0%{ transform:scale(1); }
-    45%{ transform:scale(1.28); color:#ffffff; }
+    45%{ transform:scale(1.26); }
     100%{ transform:scale(1); }
   }
 
@@ -112,24 +94,25 @@
   }
 
   @media (max-width: 460px){
-    .logo{ letter-spacing:.28em; text-indent:.28em; }
-    .stats{ gap:10px; }
-    .stat{ min-width:56px; }
+    .stats{ gap:12px; }
   }
 </style>
 </head>
 <body>
 
-<header class="nav">
-  <div class="logo"><i></i>SNAKE</div>
+<header class="nav" id="nav">
+  <div class="logo">
+    <i></i>
+    <canvas id="logoPx"></canvas>
+  </div>
   <div class="stats">
-    <div class="stat score">
-      <span class="label">SCORE</span>
-      <span class="value" id="scoreValue">000</span>
+    <div class="stat" id="scoreStat" aria-label="Score 0">
+      <canvas id="scoreLabelPx"></canvas>
+      <canvas id="scoreValuePx" class="value"></canvas>
     </div>
-    <div class="stat best">
-      <span class="label">BEST</span>
-      <span class="value" id="bestValue">000</span>
+    <div class="stat" id="bestStat" aria-label="Best 0">
+      <canvas id="bestLabelPx"></canvas>
+      <canvas id="bestValuePx" class="value"></canvas>
     </div>
   </div>
 </header>
@@ -142,8 +125,6 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
-  const scoreEl = document.getElementById("scoreValue");
-  const bestEl = document.getElementById("bestValue");
 
   /* ---------------- palette ---------------- */
   const BG        = "#070d0a";
@@ -189,6 +170,7 @@
     cell = Math.min(cw, ch);
     edge = Math.max(2, Math.round(cell * 0.08));
 
+    layoutNav();
     sanitize();
   }
 
@@ -252,8 +234,8 @@
     return n ? (n * 5 + (n - 1) * tracking) * scale : 0;
   }
 
-  function drawText(str, x, y, scale, color, tracking = 1) {
-    ctx.fillStyle = color;
+  function paintText(g, str, x, y, scale, color, tracking = 1) {
+    g.fillStyle = color;
     let cx = Math.round(x);
     y = Math.round(y);
     for (const raw of String(str).toUpperCase()) {
@@ -262,12 +244,16 @@
         for (let r = 0; r < 7; r++) {
           const row = glyph[r];
           for (let c = 0; c < 5; c++) {
-            if (row[c] === "1") ctx.fillRect(cx + c * scale, y + r * scale, scale, scale);
+            if (row[c] === "1") g.fillRect(cx + c * scale, y + r * scale, scale, scale);
           }
         }
       }
       cx += (5 + tracking) * scale;
     }
+  }
+
+  function drawText(str, x, y, scale, color, tracking = 1) {
+    paintText(ctx, str, x, y, scale, color, tracking);
   }
 
   function drawTextCenter(str, cx, y, scale, color, tracking = 1) {
@@ -280,8 +266,40 @@
     return s;
   }
 
-  /* ---------------- navbar values ---------------- */
+  /* ---------------- navbar (same pixel font as the board) ---------------- */
+  const navEl = document.getElementById("nav");
+  const logoPx = document.getElementById("logoPx");
+  const scoreLabelPx = document.getElementById("scoreLabelPx");
+  const scoreValuePx = document.getElementById("scoreValuePx");
+  const bestLabelPx = document.getElementById("bestLabelPx");
+  const bestValuePx = document.getElementById("bestValuePx");
+  const scoreStat = document.getElementById("scoreStat");
+  const bestStat = document.getElementById("bestStat");
+
+  const NAV = {
+    logo: "#cfe3a2",
+    label: "#6a8350",
+    score: "#d8f0a8",
+    best: "#9fbf72"
+  };
+
+  let navScale = { value: 4, label: 2, logo: 3 };
+
   function pad3(n) { return String(Math.max(0, n | 0)).padStart(3, "0"); }
+
+  function paint(cv, str, scale, color, tracking = 1) {
+    const r = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, textWidth(str, scale, tracking));
+    const h = 7 * scale;
+    cv.width = Math.round(w * r);
+    cv.height = Math.round(h * r);
+    cv.style.width = w + "px";
+    cv.style.height = h + "px";
+    const g = cv.getContext("2d");
+    g.setTransform(r, 0, 0, r, 0, 0);
+    g.clearRect(0, 0, w, h);
+    paintText(g, str, 0, 0, scale, color, tracking);
+  }
 
   function bump(el) {
     el.classList.remove("pop");
@@ -290,13 +308,27 @@
   }
 
   function setScore(v, animate) {
-    scoreEl.textContent = pad3(v);
-    if (animate) bump(scoreEl);
+    paint(scoreValuePx, pad3(v), navScale.value, NAV.score);
+    scoreStat.setAttribute("aria-label", "Score " + v);
+    if (animate) bump(scoreValuePx);
   }
 
   function setBest(v, animate) {
-    bestEl.textContent = pad3(v);
-    if (animate) bump(bestEl);
+    paint(bestValuePx, pad3(v), navScale.value, NAV.best);
+    bestStat.setAttribute("aria-label", "Best " + v);
+    if (animate) bump(bestValuePx);
+  }
+
+  function layoutNav() {
+    const h = navEl.getBoundingClientRect().height || 63;
+    const value = Math.max(3, Math.min(6, Math.round(h / 16)));
+    navScale = { value, label: Math.max(2, value - 2), logo: Math.max(2, value - 1) };
+
+    paint(logoPx, "SNAKE", navScale.logo, NAV.logo);
+    paint(scoreLabelPx, "SCORE", navScale.label, NAV.label);
+    paint(bestLabelPx, "BEST", navScale.label, NAV.label);
+    paint(scoreValuePx, pad3(score || 0), navScale.value, NAV.score);
+    paint(bestValuePx, pad3(best || 0), navScale.value, NAV.best);
   }
 
   /* ---------------- audio ---------------- */
