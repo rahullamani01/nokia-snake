@@ -151,13 +151,14 @@
   const LCD_EDGE  = "#3c5a28";
   const INK       = "#1e2b14";
 
-  /* ---------------- grid ---------------- */
-  const COLS = 23;
-  const ROWS = 17;
+  /* ---------------- grid (rebuilt to fill the window) ---------------- */
+  let COLS = 23;
+  let ROWS = 17;
 
   /* ---------------- layout ---------------- */
   let W = 0, H = 0, dpr = 1;
-  let cell = 20, pfX = 0, pfY = 0, pfW = 0, pfH = 0, edge = 2;
+  let cw = 20, ch = 20, cell = 20;
+  let pfX = 0, pfY = 0, pfW = 0, pfH = 0, edge = 2;
 
   function layout() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -170,16 +171,34 @@
     canvas.height = Math.floor(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const pad = Math.max(8, Math.round(Math.min(W, H) * 0.022));
+    const pad = Math.max(6, Math.round(Math.min(W, H) * 0.012));
     const availW = W - pad * 2;
     const availH = H - pad * 2;
 
-    cell = Math.max(6, Math.floor(Math.min(availW / COLS, availH / ROWS)));
-    pfW = cell * COLS;
-    pfH = cell * ROWS;
-    pfX = Math.round((W - pfW) / 2);
-    pfY = Math.round((H - pfH) / 2);
-    edge = Math.max(2, Math.round(cell * 0.1));
+    // pick a cell size, then derive a grid that fills the window edge to edge
+    const target = Math.max(12, Math.min(W, H) / 15);
+    COLS = Math.max(10, Math.round(availW / target));
+    cw = availW / COLS;
+    ROWS = Math.max(8, Math.round(availH / cw));
+    ch = availH / ROWS;
+
+    pfX = pad;
+    pfY = pad;
+    pfW = cw * COLS;
+    pfH = ch * ROWS;
+    cell = Math.min(cw, ch);
+    edge = Math.max(2, Math.round(cell * 0.08));
+
+    sanitize();
+  }
+
+  function sanitize() {
+    if (!snake) return;
+    for (const s of snake) {
+      s.x = ((s.x % COLS) + COLS) % COLS;
+      s.y = ((s.y % ROWS) + ROWS) % ROWS;
+    }
+    if (food && (food.x >= COLS || food.y >= ROWS)) placeFood();
   }
 
   /* ---------------- 5x7 pixel font ---------------- */
@@ -444,8 +463,12 @@
     ctx.restore();
 
     ctx.fillStyle = "rgba(30,43,20,0.10)";
-    for (let c = 1; c < COLS; c++) ctx.fillRect(pfX + c * cell, pfY + 1, 1, pfH - 2);
-    for (let r = 1; r < ROWS; r++) ctx.fillRect(pfX + 1, pfY + r * cell, pfW - 2, 1);
+    for (let c = 1; c < COLS; c++) {
+      ctx.fillRect(Math.round(pfX + c * cw), pfY, 1, pfH);
+    }
+    for (let r = 1; r < ROWS; r++) {
+      ctx.fillRect(pfX, Math.round(pfY + r * ch), pfW, 1);
+    }
 
     // open (dashed) edge: the snake wraps around instead of hitting a wall
     ctx.save();
@@ -460,9 +483,9 @@
     if (!food) return;
     const pulse = 0.5 + 0.5 * Math.abs(Math.sin(blink / 240));
     const scaleUp = 1 + pop * 0.35;
-    const size = Math.max(4, Math.round(cell * (0.42 + 0.26 * pulse) * scaleUp));
-    const cx = pfX + food.x * cell + cell / 2;
-    const cy = pfY + food.y * cell + cell / 2;
+    const size = Math.max(4, Math.round(cell * (0.40 + 0.24 * pulse) * scaleUp));
+    const cx = pfX + (food.x + 0.5) * cw;
+    const cy = pfY + (food.y + 0.5) * ch;
     const x = Math.round(cx - size / 2);
     const y = Math.round(cy - size / 2);
 
@@ -471,38 +494,38 @@
 
     ctx.strokeStyle = "rgba(30,43,20,0.35)";
     ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
+    const ring = cell * 0.36;
     ctx.strokeRect(
-      Math.round(cx - cell * 0.36),
-      Math.round(cy - cell * 0.36),
-      Math.round(cell * 0.72),
-      Math.round(cell * 0.72)
+      Math.round(cx - ring),
+      Math.round(cy - ring),
+      Math.round(ring * 2),
+      Math.round(ring * 2)
     );
   }
 
   function drawSnake() {
-    const gap = Math.max(1, Math.round(cell * 0.07));
+    const gap = Math.max(1, Math.round(cell * 0.06));
 
     ctx.fillStyle = INK;
     for (let i = 0; i < snake.length; i++) {
       const seg = snake[i];
-      ctx.fillRect(
-        pfX + seg.x * cell + gap,
-        pfY + seg.y * cell + gap,
-        cell - gap * 2,
-        cell - gap * 2
-      );
+      const x0 = Math.round(pfX + seg.x * cw);
+      const x1 = Math.round(pfX + (seg.x + 1) * cw);
+      const y0 = Math.round(pfY + seg.y * ch);
+      const y1 = Math.round(pfY + (seg.y + 1) * ch);
+      ctx.fillRect(x0 + gap, y0 + gap, x1 - x0 - gap * 2, y1 - y0 - gap * 2);
     }
 
     if (state === "dying") return;
 
     const head = snake[0];
-    const cx = pfX + head.x * cell + cell / 2;
-    const cy = pfY + head.y * cell + cell / 2;
+    const cx = pfX + (head.x + 0.5) * cw;
+    const cy = pfY + (head.y + 0.5) * ch;
     const eye = Math.max(2, Math.round(cell * 0.16));
     ctx.fillStyle = LCD;
     ctx.fillRect(
-      Math.round(cx + dir.x * cell * 0.2 - eye / 2),
-      Math.round(cy + dir.y * cell * 0.2 - eye / 2),
+      Math.round(cx + dir.x * cw * 0.2 - eye / 2),
+      Math.round(cy + dir.y * ch * 0.2 - eye / 2),
       eye, eye
     );
   }

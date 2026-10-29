@@ -41,4 +41,4 @@ Swipe to steer on touch devices.
 - Canvas 2D, ~60 fps fixed-step game loop
 - Hand-drawn 5x7 bitmap font for the retro LCD look
 - Web Audio square-wave blips
-- Board scales to fill any window size
+- Board fills the whole window — the grid is rebuilt on resize so the playfield always runs edge to edge
