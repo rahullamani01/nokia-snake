@@ -30,7 +30,8 @@ Swipe to steer on touch devices.
 ## Rules
 
 - Eat the pulsing square to grow and score 10 points.
-- Hitting a wall or your own tail ends the run.
+- **The edges wrap** — slide off the right side and you come back in on the left.
+- Hitting your own tail ends the run.
 - The snake speeds up every 50 points.
 - Your best score is saved in `localStorage`.
 
