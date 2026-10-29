@@ -456,11 +456,10 @@
   function step() {
     if (dirQueue.length) dir = dirQueue.shift();
 
-    // wrap-around edges: leave one side, come back in the other
-    const head = {
-      x: (snake[0].x + dir.x + COLS) % COLS,
-      y: (snake[0].y + dir.y + ROWS) % ROWS
-    };
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // the border is a wall: touching it ends the run
+    if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) return die();
 
     const grow = food && head.x === food.x && head.y === food.y;
     const body = grow ? snake : snake.slice(0, -1);
@@ -502,13 +501,10 @@
       ctx.fillRect(pfX, Math.round(pfY + r * ch), pfW, 1);
     }
 
-    // open (dashed) edge: the snake wraps around instead of hitting a wall
-    ctx.save();
+    // solid edge: the border is a wall
     ctx.strokeStyle = LCD_EDGE;
     ctx.lineWidth = edge;
-    ctx.setLineDash([Math.max(4, cell * 0.4), Math.max(3, cell * 0.28)]);
     ctx.strokeRect(pfX - edge / 2, pfY - edge / 2, pfW + edge, pfH + edge);
-    ctx.restore();
   }
 
   function drawFood() {
