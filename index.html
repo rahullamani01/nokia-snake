@@ -12,12 +12,128 @@
     overflow:hidden;
     background:#070d0a;
     overscroll-behavior:none;
-    cursor:none;
   }
-  canvas{ display:block; width:100vw; height:100vh; touch-action:none; }
+
+  body{
+    display:flex;
+    flex-direction:column;
+    height:100dvh;
+    font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    cursor:none;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ------------- navbar ------------- */
+  .nav{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    height:clamp(56px, 9vh, 76px);
+    padding:0 clamp(14px, 3vw, 32px);
+    background:linear-gradient(180deg, #0d1712 0%, #08100c 100%);
+    border-bottom:1px solid rgba(185,209,140,.14);
+    box-shadow:0 1px 0 rgba(185,209,140,.05), 0 10px 30px -18px rgba(140,190,90,.5);
+    user-select:none;
+    z-index:2;
+  }
+
+  .logo{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:clamp(11px, 1.5vw, 14px);
+    font-weight:800;
+    letter-spacing:.42em;
+    text-indent:.42em;
+    color:#cfe3a2;
+    text-shadow:0 0 18px rgba(185,209,140,.35);
+  }
+  .logo i{
+    width:7px; height:7px; border-radius:50%;
+    background:#9fe06f;
+    box-shadow:0 0 10px #9fe06f;
+    animation:blink 2.4s ease-in-out infinite;
+    font-style:normal;
+  }
+  @keyframes blink{
+    0%, 100%{ opacity:1; }
+    50%{ opacity:.28; }
+  }
+
+  .stats{
+    display:flex;
+    align-items:center;
+    gap:clamp(12px, 3vw, 28px);
+  }
+
+  .stat{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:2px;
+    min-width:clamp(62px, 8vw, 96px);
+  }
+  .stat .label{
+    font-size:clamp(8px, 1vw, 10px);
+    letter-spacing:.22em;
+    text-indent:.22em;
+    color:#6a8350;
+    font-weight:700;
+  }
+  .stat .value{
+    font-size:clamp(17px, 2.4vw, 26px);
+    font-weight:800;
+    line-height:1;
+    color:#d8f0a8;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:.06em;
+    text-shadow:0 0 16px rgba(185,209,140,.35);
+    transform-origin:right center;
+  }
+  .stat.best .value{ color:#9fbf72; }
+
+  .value.pop{ animation:pop .2s cubic-bezier(.2,.9,.3,1.4); }
+  @keyframes pop{
+    0%{ transform:scale(1); }
+    45%{ transform:scale(1.28); color:#ffffff; }
+    100%{ transform:scale(1); }
+  }
+
+  /* ------------- board ------------- */
+  canvas{
+    flex:1 1 auto;
+    display:block;
+    width:100%;
+    height:100%;
+    min-height:0;
+    touch-action:none;
+  }
+
+  @media (max-width: 460px){
+    .logo{ letter-spacing:.28em; text-indent:.28em; }
+    .stats{ gap:10px; }
+    .stat{ min-width:56px; }
+  }
 </style>
 </head>
 <body>
+
+<header class="nav">
+  <div class="logo"><i></i>SNAKE</div>
+  <div class="stats">
+    <div class="stat score">
+      <span class="label">SCORE</span>
+      <span class="value" id="scoreValue">000</span>
+    </div>
+    <div class="stat best">
+      <span class="label">BEST</span>
+      <span class="value" id="bestValue">000</span>
+    </div>
+  </div>
+</header>
+
 <canvas id="game"></canvas>
 
 <script>
@@ -26,47 +142,43 @@
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d", { alpha: false });
+  const scoreEl = document.getElementById("scoreValue");
+  const bestEl = document.getElementById("bestValue");
 
   /* ---------------- palette ---------------- */
   const BG        = "#070d0a";
   const LCD       = "#b9d18c";
   const LCD_EDGE  = "#3c5a28";
   const INK       = "#1e2b14";
-  const DIM       = "#6f8c50";
-  const HUD_TEXT  = "#cfe3a2";
-  const HUD_DIM   = "#6a8350";
 
   /* ---------------- grid ---------------- */
   const COLS = 23;
   const ROWS = 17;
 
-  /* ---------------- layout (recomputed on resize) ---------------- */
+  /* ---------------- layout ---------------- */
   let W = 0, H = 0, dpr = 1;
-  let cell = 20, pfX = 0, pfY = 0, pfW = 0, pfH = 0;
-  let hudScale = 3, hudY = 0, edge = 2;
+  let cell = 20, pfX = 0, pfY = 0, pfW = 0, pfH = 0, edge = 2;
 
   function layout() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    W = Math.max(1, Math.floor(window.innerWidth));
-    H = Math.max(1, Math.floor(window.innerHeight));
+
+    const rect = canvas.getBoundingClientRect();
+    W = Math.max(1, Math.round(rect.width));
+    H = Math.max(1, Math.round(rect.height));
 
     canvas.width = Math.floor(W * dpr);
     canvas.height = Math.floor(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const pad = Math.max(10, Math.round(Math.min(W, H) * 0.025));
-    const hudH = Math.max(38, Math.round(H * 0.08));
+    const pad = Math.max(8, Math.round(Math.min(W, H) * 0.022));
     const availW = W - pad * 2;
-    const availH = H - pad * 2 - hudH;
+    const availH = H - pad * 2;
 
     cell = Math.max(6, Math.floor(Math.min(availW / COLS, availH / ROWS)));
     pfW = cell * COLS;
     pfH = cell * ROWS;
     pfX = Math.round((W - pfW) / 2);
-    pfY = Math.round(pad + hudH + (availH - pfH) / 2);
-
-    hudScale = Math.max(2, Math.min(9, Math.floor(hudH / 9)));
-    hudY = pad + Math.round((hudH - 7 * hudScale) / 2);
+    pfY = Math.round((H - pfH) / 2);
     edge = Math.max(2, Math.round(cell * 0.1));
   }
 
@@ -113,7 +225,6 @@
     "-":["00000","00000","00000","11111","00000","00000","00000"],
     ".":["00000","00000","00000","00000","00000","00110","00110"],
     "!":["00100","00100","00100","00100","00100","00000","00100"],
-    "/":["00001","00010","00010","00100","01000","01000","10000"],
     "+":["00000","00100","00100","11111","00100","00100","00000"]
   };
 
@@ -148,6 +259,25 @@
     let s = Math.max(1, Math.floor(maxScale));
     while (s > 1 && textWidth(str, s, tracking) > maxWidth) s--;
     return s;
+  }
+
+  /* ---------------- navbar values ---------------- */
+  function pad3(n) { return String(Math.max(0, n | 0)).padStart(3, "0"); }
+
+  function bump(el) {
+    el.classList.remove("pop");
+    void el.offsetWidth;   // restart the animation
+    el.classList.add("pop");
+  }
+
+  function setScore(v, animate) {
+    scoreEl.textContent = pad3(v);
+    if (animate) bump(scoreEl);
+  }
+
+  function setBest(v, animate) {
+    bestEl.textContent = pad3(v);
+    if (animate) bump(bestEl);
   }
 
   /* ---------------- audio ---------------- */
@@ -220,6 +350,7 @@
     pop = 0;
     deathT = 0;
     newBest = false;
+    setScore(0, false);
     placeFood();
   }
 
@@ -253,11 +384,13 @@
     else if (state === "paused") { state = "playing"; sfx.pause(); }
   }
 
-  // called once when the run ends (death or a filled board)
   function finishRun() {
     newBest = score > 0 && score > bestAtStart;
-    if (score > best) best = score;
-    saveBest(best);
+    if (score > best) {
+      best = score;
+      saveBest(best);
+      setBest(best, true);
+    }
     state = "over";
   }
 
@@ -284,7 +417,12 @@
 
     if (grow) {
       score += 10;
-      if (score > best) best = score;
+      setScore(score, true);
+      if (score > best) {
+        best = score;
+        saveBest(best);
+        setBest(best, false);
+      }
       stepMs = Math.max(MIN_STEP, BASE_STEP - Math.floor(score / 50) * 8);
       pop = 1;
       sfx.eat();
@@ -303,12 +441,10 @@
     ctx.fillRect(pfX, pfY, pfW, pfH);
     ctx.restore();
 
-    // grid
     ctx.fillStyle = "rgba(30,43,20,0.10)";
     for (let c = 1; c < COLS; c++) ctx.fillRect(pfX + c * cell, pfY + 1, 1, pfH - 2);
     for (let r = 1; r < ROWS; r++) ctx.fillRect(pfX + 1, pfY + r * cell, pfW - 2, 1);
 
-    // border
     ctx.strokeStyle = LCD_EDGE;
     ctx.lineWidth = edge;
     ctx.strokeRect(pfX - edge / 2, pfY - edge / 2, pfW + edge, pfH + edge);
@@ -327,7 +463,6 @@
     ctx.fillStyle = INK;
     ctx.fillRect(x, y, size, size);
 
-    // little ring so it pops against the field
     ctx.strokeStyle = "rgba(30,43,20,0.35)";
     ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
     ctx.strokeRect(
@@ -340,7 +475,6 @@
 
   function drawSnake() {
     const gap = Math.max(1, Math.round(cell * 0.07));
-    const dim = state === "dying";
 
     ctx.fillStyle = INK;
     for (let i = 0; i < snake.length; i++) {
@@ -353,9 +487,8 @@
       );
     }
 
-    if (dim) return;
+    if (state === "dying") return;
 
-    // eye
     const head = snake[0];
     const cx = pfX + head.x * cell + cell / 2;
     const cy = pfY + head.y * cell + cell / 2;
@@ -366,13 +499,6 @@
       Math.round(cy + dir.y * cell * 0.2 - eye / 2),
       eye, eye
     );
-  }
-
-  function drawHud() {
-    const s = "SCORE " + String(score).padStart(3, "0");
-    const b = "BEST " + String(best).padStart(3, "0");
-    drawText(s, pfX, hudY, hudScale, HUD_TEXT);
-    drawText(b, pfX + pfW - textWidth(b, hudScale), hudY, hudScale, HUD_DIM);
   }
 
   function drawStartScreen() {
@@ -400,7 +526,7 @@
     drawTextCenter(label, pfX + pfW / 2, y + subS, subS, LCD);
 
     y += barH + Math.round(gap * 0.7);
-    drawTextCenter("BEST " + String(best).padStart(3, "0"), pfX + pfW / 2, y, subS, "rgba(30,43,20,0.7)");
+    drawTextCenter("BEST " + pad3(best), pfX + pfW / 2, y, subS, "rgba(30,43,20,0.7)");
   }
 
   function dimField(alpha) {
@@ -430,13 +556,13 @@
     drawTextCenter("GAME OVER", pfX + pfW / 2, y, s1, INK);
     y += 7 * s1 + Math.round(cell * 0.7);
 
-    drawTextCenter("SCORE " + String(score).padStart(3, "0"), pfX + pfW / 2, y, s2, INK);
+    drawTextCenter("SCORE " + pad3(score), pfX + pfW / 2, y, s2, INK);
     y += 7 * s2 + Math.round(cell * 0.5);
 
     if (newBest) {
       drawTextCenter("NEW BEST!", pfX + pfW / 2, y, s3, INK);
     } else {
-      drawTextCenter("BEST " + String(best).padStart(3, "0"), pfX + pfW / 2, y, s3, "rgba(30,43,20,0.7)");
+      drawTextCenter("BEST " + pad3(best), pfX + pfW / 2, y, s3, "rgba(30,43,20,0.7)");
     }
     y += 7 * s3 + Math.round(cell * 0.9);
 
@@ -452,7 +578,6 @@
     drawField();
     drawFood();
     drawSnake();
-    drawHud();
 
     if (state === "start") drawStartScreen();
     else if (state === "paused") drawPauseScreen();
@@ -483,7 +608,7 @@
       }
     } else if (state === "dying") {
       deathT += dt;
-      if (deathT > 700) { state = "over"; }
+      if (deathT > 700) state = "over";
     }
 
     render();
@@ -547,31 +672,15 @@
     else togglePause();
   });
 
-  // swipe for touch
-  let touchStart = null;
-  canvas.addEventListener("touchstart", (e) => {
-    const t = e.changedTouches[0];
-    touchStart = { x: t.clientX, y: t.clientY };
-  }, { passive: true });
-
-  canvas.addEventListener("touchend", (e) => {
-    if (!touchStart) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touchStart.x;
-    const dy = t.clientY - touchStart.y;
-    touchStart = null;
-    if (Math.hypot(dx, dy) < 24) return;   // tap handled by pointerdown
-    if (Math.abs(dx) > Math.abs(dy)) handleDir({ x: Math.sign(dx), y: 0 });
-    else handleDir({ x: 0, y: Math.sign(dy) });
-  }, { passive: true });
-
   /* ---------------- boot ---------------- */
   layout();
   window.addEventListener("resize", layout);
-  window.addEventListener("orientationchange", () => setTimeout(layout, 120));
-  document.addEventListener("fullscreenchange", layout);
+  window.addEventListener("orientationchange", () => setTimeout(layout, 140));
+  document.addEventListener("fullscreenchange", () => setTimeout(layout, 140));
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(canvas);
 
   best = loadBest();
+  setBest(best, false);
   reset();
   state = "start";
   blink = 0;
