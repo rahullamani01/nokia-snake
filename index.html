@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Snake</title>
+<style>
+  *{ box-sizing:border-box; }
+  html, body{
+    margin:0; padding:0;
+    width:100%; height:100%;
+    overflow:hidden;
+    background:#070d0a;
+    overscroll-behavior:none;
+    cursor:none;
+  }
+  canvas{ display:block; width:100vw; height:100vh; touch-action:none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  /* ---------------- palette ---------------- */
+  const BG        = "#070d0a";
+  const LCD       = "#b9d18c";
+  const LCD_EDGE  = "#3c5a28";
+  const INK       = "#1e2b14";
+  const DIM       = "#6f8c50";
+  const HUD_TEXT  = "#cfe3a2";
+  const HUD_DIM   = "#6a8350";
+
+  /* ---------------- grid ---------------- */
+  const COLS = 23;
+  const ROWS = 17;
+
+  /* ---------------- layout (recomputed on resize) ---------------- */
+  let W = 0, H = 0, dpr = 1;
+  let cell = 20, pfX = 0, pfY = 0, pfW = 0, pfH = 0;
+  let hudScale = 3, hudY = 0, edge = 2;
+
+  function layout() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(1, Math.floor(window.innerWidth));
+    H = Math.max(1, Math.floor(window.innerHeight));
+
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const pad = Math.max(10, Math.round(Math.min(W, H) * 0.025));
+    const hudH = Math.max(38, Math.round(H * 0.08));
+    const availW = W - pad * 2;
+    const availH = H - pad * 2 - hudH;
+
+    cell = Math.max(6, Math.floor(Math.min(availW / COLS, availH / ROWS)));
+    pfW = cell * COLS;
+    pfH = cell * ROWS;
+    pfX = Math.round((W - pfW) / 2);
+    pfY = Math.round(pad + hudH + (availH - pfH) / 2);
+
+    hudScale = Math.max(2, Math.min(9, Math.floor(hudH / 9)));
+    hudY = pad + Math.round((hudH - 7 * hudScale) / 2);
+    edge = Math.max(2, Math.round(cell * 0.1));
+  }
+
+  /* ---------------- 5x7 pixel font ---------------- */
+  const FONT = {
+    A:["01110","10001","10001","11111","10001","10001","10001"],
+    B:["11110","10001","10001","11110","10001","10001","11110"],
+    C:["01110","10001","10000","10000","10000","10001","01110"],
+    D:["11110","10001","10001","10001","10001","10001","11110"],
+    E:["11111","10000","10000","11110","10000","10000","11111"],
+    F:["11111","10000","10000","11110","10000","10000","10000"],
+    G:["01110","10001","10000","10111","10001","10001","01110"],
+    H:["10001","10001","10001","11111","10001","10001","10001"],
+    I:["01110","00100","00100","00100","00100","00100","01110"],
+    J:["00111","00010","00010","00010","00010","10010","01100"],
+    K:["10001","10010","10100","11000","10100","10010","10001"],
+    L:["10000","10000","10000","10000","10000","10000","11111"],
+    M:["10001","11011","10101","10101","10001","10001","10001"],
+    N:["10001","11001","10101","10011","10001","10001","10001"],
+    O:["01110","10001","10001","10001","10001","10001","01110"],
+    P:["11110","10001","10001","11110","10000","10000","10000"],
+    Q:["01110","10001","10001","10001","10101","10010","01101"],
+    R:["11110","10001","10001","11110","10100","10010","10001"],
+    S:["01111","10000","10000","01110","00001","00001","11110"],
+    T:["11111","00100","00100","00100","00100","00100","00100"],
+    U:["10001","10001","10001","10001","10001","10001","01110"],
+    V:["10001","10001","10001","10001","10001","01010","00100"],
+    W:["10001","10001","10001","10101","10101","11011","10001"],
+    X:["10001","10001","01010","00100","01010","10001","10001"],
+    Y:["10001","10001","01010","00100","00100","00100","00100"],
+    Z:["11111","00001","00010","00100","01000","10000","11111"],
+    "0":["01110","10001","10011","10101","11001","10001","01110"],
+    "1":["00100","01100","00100","00100","00100","00100","01110"],
+    "2":["01110","10001","00001","00010","00100","01000","11111"],
+    "3":["11111","00010","00100","00010","00001","10001","01110"],
+    "4":["00010","00110","01010","10010","11111","00010","00010"],
+    "5":["11111","10000","11110","00001","00001","10001","01110"],
+    "6":["00110","01000","10000","11110","10001","10001","01110"],
+    "7":["11111","00001","00010","00100","01000","01000","01000"],
+    "8":["01110","10001","10001","01110","10001","10001","01110"],
+    "9":["01110","10001","10001","01111","00001","00010","01100"],
+    " ":["00000","00000","00000","00000","00000","00000","00000"],
+    ":":["00000","00100","00100","00000","00100","00100","00000"],
+    "-":["00000","00000","00000","11111","00000","00000","00000"],
+    ".":["00000","00000","00000","00000","00000","00110","00110"],
+    "!":["00100","00100","00100","00100","00100","00000","00100"],
+    "/":["00001","00010","00010","00100","01000","01000","10000"],
+    "+":["00000","00100","00100","11111","00100","00100","00000"]
+  };
+
+  function textWidth(str, scale, tracking = 1) {
+    const n = String(str).length;
+    return n ? (n * 5 + (n - 1) * tracking) * scale : 0;
+  }
+
+  function drawText(str, x, y, scale, color, tracking = 1) {
+    ctx.fillStyle = color;
+    let cx = Math.round(x);
+    y = Math.round(y);
+    for (const raw of String(str).toUpperCase()) {
+      const glyph = FONT[raw];
+      if (glyph) {
+        for (let r = 0; r < 7; r++) {
+          const row = glyph[r];
+          for (let c = 0; c < 5; c++) {
+            if (row[c] === "1") ctx.fillRect(cx + c * scale, y + r * scale, scale, scale);
+          }
+        }
+      }
+      cx += (5 + tracking) * scale;
+    }
+  }
+
+  function drawTextCenter(str, cx, y, scale, color, tracking = 1) {
+    drawText(str, cx - textWidth(str, scale, tracking) / 2, y, scale, color, tracking);
+  }
+
+  function fitScale(str, maxScale, maxWidth, tracking = 1) {
+    let s = Math.max(1, Math.floor(maxScale));
+    while (s > 1 && textWidth(str, s, tracking) > maxWidth) s--;
+    return s;
+  }
+
+  /* ---------------- audio ---------------- */
+  let audioCtx = null;
+  let muted = false;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try { audioCtx = new AC(); } catch (e) { return null; }
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function beep(freq, dur = 0.07, type = "square", vol = 0.04) {
+    if (muted) return;
+    const ac = ensureAudio();
+    if (!ac) return;
+    try {
+      const t = ac.currentTime;
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(vol, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+    } catch (e) { /* ignore */ }
+  }
+
+  const sfx = {
+    eat() { beep(900, 0.055); setTimeout(() => beep(1350, 0.055), 50); },
+    start() { beep(520, 0.07); setTimeout(() => beep(780, 0.09), 80); },
+    over() {
+      beep(420, 0.12);
+      setTimeout(() => beep(300, 0.12), 115);
+      setTimeout(() => beep(180, 0.26), 240);
+    },
+    pause() { beep(640, 0.05, "square", 0.028); }
+  };
+
+  /* ---------------- state ---------------- */
+  const BASE_STEP = 130;
+  const MIN_STEP = 62;
+  const BEST_KEY = "snake-best";
+
+  let snake, dir, dirQueue, food, score, best, bestAtStart, state, stepMs, acc, blink, pop, newBest;
+  let deathT = 0;
+
+  function loadBest() {
+    try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; }
+  }
+  function saveBest(v) {
+    try { localStorage.setItem(BEST_KEY, String(v)); } catch (e) { /* ignore */ }
+  }
+
+  function reset() {
+    const cy = Math.floor(ROWS / 2);
+    snake = [{ x: 8, y: cy }, { x: 7, y: cy }, { x: 6, y: cy }];
+    dir = { x: 1, y: 0 };
+    dirQueue = [];
+    score = 0;
+    stepMs = BASE_STEP;
+    acc = 0;
+    pop = 0;
+    deathT = 0;
+    newBest = false;
+    placeFood();
+  }
+
+  function placeFood() {
+    const free = [];
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (!snake.some(s => s.x === x && s.y === y)) free.push({ x, y });
+      }
+    }
+    if (!free.length) { food = null; finishRun(); return; }
+    food = free[(Math.random() * free.length) | 0];
+  }
+
+  function pushDir(d) {
+    const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
+    if (d.x === -last.x && d.y === -last.y) return;
+    if (d.x === last.x && d.y === last.y) return;
+    if (dirQueue.length < 2) dirQueue.push(d);
+  }
+
+  function startGame() {
+    reset();
+    bestAtStart = best;
+    state = "playing";
+    sfx.start();
+  }
+
+  function togglePause() {
+    if (state === "playing") { state = "paused"; sfx.pause(); }
+    else if (state === "paused") { state = "playing"; sfx.pause(); }
+  }
+
+  // called once when the run ends (death or a filled board)
+  function finishRun() {
+    newBest = score > 0 && score > bestAtStart;
+    if (score > best) best = score;
+    saveBest(best);
+    state = "over";
+  }
+
+  function die() {
+    if (state !== "playing") return;
+    finishRun();
+    state = "dying";
+    deathT = 0;
+    sfx.over();
+  }
+
+  function step() {
+    if (dirQueue.length) dir = dirQueue.shift();
+
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) return die();
+
+    const grow = food && head.x === food.x && head.y === food.y;
+    const body = grow ? snake : snake.slice(0, -1);
+    if (body.some(s => s.x === head.x && s.y === head.y)) return die();
+
+    snake.unshift(head);
+
+    if (grow) {
+      score += 10;
+      if (score > best) best = score;
+      stepMs = Math.max(MIN_STEP, BASE_STEP - Math.floor(score / 50) * 8);
+      pop = 1;
+      sfx.eat();
+      placeFood();
+    } else {
+      snake.pop();
+    }
+  }
+
+  /* ---------------- drawing ---------------- */
+  function drawField() {
+    ctx.save();
+    ctx.shadowColor = "rgba(150,200,95,0.30)";
+    ctx.shadowBlur = Math.max(12, cell * 0.9);
+    ctx.fillStyle = LCD;
+    ctx.fillRect(pfX, pfY, pfW, pfH);
+    ctx.restore();
+
+    // grid
+    ctx.fillStyle = "rgba(30,43,20,0.10)";
+    for (let c = 1; c < COLS; c++) ctx.fillRect(pfX + c * cell, pfY + 1, 1, pfH - 2);
+    for (let r = 1; r < ROWS; r++) ctx.fillRect(pfX + 1, pfY + r * cell, pfW - 2, 1);
+
+    // border
+    ctx.strokeStyle = LCD_EDGE;
+    ctx.lineWidth = edge;
+    ctx.strokeRect(pfX - edge / 2, pfY - edge / 2, pfW + edge, pfH + edge);
+  }
+
+  function drawFood() {
+    if (!food) return;
+    const pulse = 0.5 + 0.5 * Math.abs(Math.sin(blink / 240));
+    const scaleUp = 1 + pop * 0.35;
+    const size = Math.max(4, Math.round(cell * (0.42 + 0.26 * pulse) * scaleUp));
+    const cx = pfX + food.x * cell + cell / 2;
+    const cy = pfY + food.y * cell + cell / 2;
+    const x = Math.round(cx - size / 2);
+    const y = Math.round(cy - size / 2);
+
+    ctx.fillStyle = INK;
+    ctx.fillRect(x, y, size, size);
+
+    // little ring so it pops against the field
+    ctx.strokeStyle = "rgba(30,43,20,0.35)";
+    ctx.lineWidth = Math.max(1, Math.round(cell * 0.05));
+    ctx.strokeRect(
+      Math.round(cx - cell * 0.36),
+      Math.round(cy - cell * 0.36),
+      Math.round(cell * 0.72),
+      Math.round(cell * 0.72)
+    );
+  }
+
+  function drawSnake() {
+    const gap = Math.max(1, Math.round(cell * 0.07));
+    const dim = state === "dying";
+
+    ctx.fillStyle = INK;
+    for (let i = 0; i < snake.length; i++) {
+      const seg = snake[i];
+      ctx.fillRect(
+        pfX + seg.x * cell + gap,
+        pfY + seg.y * cell + gap,
+        cell - gap * 2,
+        cell - gap * 2
+      );
+    }
+
+    if (dim) return;
+
+    // eye
+    const head = snake[0];
+    const cx = pfX + head.x * cell + cell / 2;
+    const cy = pfY + head.y * cell + cell / 2;
+    const eye = Math.max(2, Math.round(cell * 0.16));
+    ctx.fillStyle = LCD;
+    ctx.fillRect(
+      Math.round(cx + dir.x * cell * 0.2 - eye / 2),
+      Math.round(cy + dir.y * cell * 0.2 - eye / 2),
+      eye, eye
+    );
+  }
+
+  function drawHud() {
+    const s = "SCORE " + String(score).padStart(3, "0");
+    const b = "BEST " + String(best).padStart(3, "0");
+    drawText(s, pfX, hudY, hudScale, HUD_TEXT);
+    drawText(b, pfX + pfW - textWidth(b, hudScale), hudY, hudScale, HUD_DIM);
+  }
+
+  function drawStartScreen() {
+    const titleS = fitScale("SNAKE", cell * 1.05, pfW * 0.86);
+    const subS = Math.max(2, Math.min(6, Math.round(cell * 0.26)));
+    const titleH = 7 * titleS;
+    const subH = 7 * subS;
+    const gap = Math.round(cell * 0.85);
+
+    const barH = subH + subS * 2;
+    const total = titleH + Math.round(gap * 0.55) + subH + gap + barH + Math.round(gap * 0.7) + subH;
+    let y = Math.round(pfY + (pfH - total) / 2);
+
+    drawTextCenter("SNAKE", pfX + pfW / 2, y, titleS, INK);
+    y += titleH + Math.round(gap * 0.55);
+
+    drawTextCenter("ARROWS OR WASD", pfX + pfW / 2, y, subS, "rgba(30,43,20,0.55)");
+    y += subH + gap;
+
+    const label = "PRESS ENTER";
+    const bw = textWidth(label, subS) + subS * 4;
+    const bx = Math.round(pfX + pfW / 2 - bw / 2);
+    ctx.fillStyle = INK;
+    ctx.fillRect(bx, y, bw, barH);
+    drawTextCenter(label, pfX + pfW / 2, y + subS, subS, LCD);
+
+    y += barH + Math.round(gap * 0.7);
+    drawTextCenter("BEST " + String(best).padStart(3, "0"), pfX + pfW / 2, y, subS, "rgba(30,43,20,0.7)");
+  }
+
+  function dimField(alpha) {
+    ctx.fillStyle = `rgba(185,209,140,${alpha})`;
+    ctx.fillRect(pfX, pfY, pfW, pfH);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = Math.max(2, Math.round(cell * 0.07));
+    const i = Math.max(6, Math.round(cell * 0.5));
+    ctx.strokeRect(pfX + i, pfY + i, pfW - i * 2, pfH - i * 2);
+  }
+
+  function drawPauseScreen() {
+    dimField(0.90);
+    const s1 = fitScale("PAUSED", cell * 0.95, pfW * 0.8);
+    const s2 = Math.max(2, Math.min(6, Math.round(cell * 0.26)));
+    drawTextCenter("PAUSED", pfX + pfW / 2, pfY + pfH * 0.38, s1, INK);
+    drawTextCenter("SPACE TO RESUME", pfX + pfW / 2, pfY + pfH * 0.38 + 7 * s1 + cell, s2, "rgba(30,43,20,0.7)");
+  }
+
+  function drawOverScreen() {
+    dimField(0.93);
+    const s1 = fitScale("GAME OVER", cell * 0.85, pfW * 0.86);
+    const s2 = Math.max(2, Math.min(6, Math.round(cell * 0.28)));
+    const s3 = Math.max(2, Math.min(5, Math.round(cell * 0.22)));
+
+    let y = Math.round(pfY + pfH * 0.28);
+    drawTextCenter("GAME OVER", pfX + pfW / 2, y, s1, INK);
+    y += 7 * s1 + Math.round(cell * 0.7);
+
+    drawTextCenter("SCORE " + String(score).padStart(3, "0"), pfX + pfW / 2, y, s2, INK);
+    y += 7 * s2 + Math.round(cell * 0.5);
+
+    if (newBest) {
+      drawTextCenter("NEW BEST!", pfX + pfW / 2, y, s3, INK);
+    } else {
+      drawTextCenter("BEST " + String(best).padStart(3, "0"), pfX + pfW / 2, y, s3, "rgba(30,43,20,0.7)");
+    }
+    y += 7 * s3 + Math.round(cell * 0.9);
+
+    if (Math.floor(blink / 520) % 2 === 0) {
+      drawTextCenter("PRESS ENTER", pfX + pfW / 2, y, s3, "rgba(30,43,20,0.85)");
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+
+    drawField();
+    drawFood();
+    drawSnake();
+    drawHud();
+
+    if (state === "start") drawStartScreen();
+    else if (state === "paused") drawPauseScreen();
+    else if (state === "over") drawOverScreen();
+  }
+
+  /* ---------------- loop ---------------- */
+  let last = 0;
+
+  function loop(t) {
+    requestAnimationFrame(loop);
+
+    if (!last) last = t;
+    let dt = t - last;
+    last = t;
+    if (dt > 120) dt = 120;
+
+    blink += dt;
+    if (pop > 0) pop = Math.max(0, pop - dt / 200);
+
+    if (state === "playing") {
+      acc += dt;
+      let guard = 0;
+      while (acc >= stepMs && guard++ < 8) {
+        acc -= stepMs;
+        step();
+        if (state !== "playing") break;
+      }
+    } else if (state === "dying") {
+      deathT += dt;
+      if (deathT > 700) { state = "over"; }
+    }
+
+    render();
+  }
+
+  /* ---------------- input ---------------- */
+  const dirs = {
+    ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
+    ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
+    w: { x: 0, y: -1 }, s: { x: 0, y: 1 },
+    a: { x: -1, y: 0 }, d: { x: 1, y: 0 }
+  };
+
+  function handleDir(d) {
+    if (state === "start") startGame();
+    if (state === "playing") pushDir(d);
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  window.addEventListener("keydown", (e) => {
+    const k = e.key;
+    const norm = k.length === 1 ? k.toLowerCase() : k;
+
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Enter"].includes(k)) {
+      e.preventDefault();
+    }
+
+    if (dirs[k]) return handleDir(dirs[k]);
+    if (dirs[norm]) return handleDir(dirs[norm]);
+
+    if (k === " " || k === "Enter") {
+      if (state === "start" || state === "over") startGame();
+      else if (state === "playing" || state === "paused") togglePause();
+      return;
+    }
+
+    if (norm === "m") {
+      muted = !muted;
+      if (!muted) { ensureAudio(); beep(700, 0.06); }
+    }
+
+    if (norm === "f") toggleFullscreen();
+  }, { passive: false });
+
+  window.addEventListener("blur", () => {
+    if (state === "playing") state = "paused";
+  });
+
+  canvas.addEventListener("pointerdown", () => {
+    ensureAudio();
+    if (state === "start" || state === "over") startGame();
+    else togglePause();
+  });
+
+  // swipe for touch
+  let touchStart = null;
+  canvas.addEventListener("touchstart", (e) => {
+    const t = e.changedTouches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+
+  canvas.addEventListener("touchend", (e) => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.hypot(dx, dy) < 24) return;   // tap handled by pointerdown
+    if (Math.abs(dx) > Math.abs(dy)) handleDir({ x: Math.sign(dx), y: 0 });
+    else handleDir({ x: 0, y: Math.sign(dy) });
+  }, { passive: true });
+
+  /* ---------------- boot ---------------- */
+  layout();
+  window.addEventListener("resize", layout);
+  window.addEventListener("orientationchange", () => setTimeout(layout, 120));
+  document.addEventListener("fullscreenchange", layout);
+
+  best = loadBest();
+  reset();
+  state = "start";
+  blink = 0;
+
+  render();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
