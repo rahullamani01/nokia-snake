@@ -172,6 +172,7 @@
 
     layoutNav();
     sanitize();
+    particles.length = 0;
   }
 
   function sanitize() {
@@ -382,6 +383,7 @@
 
   let snake, dir, dirQueue, food, score, best, bestAtStart, state, stepMs, acc, blink, pop, newBest;
   let deathT = 0;
+  const particles = [];
 
   function loadBest() {
     try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch (e) { return 0; }
@@ -401,6 +403,7 @@
     pop = 0;
     deathT = 0;
     newBest = false;
+    particles.length = 0;
     setScore(0, false);
     placeFood();
   }
@@ -478,6 +481,7 @@
       stepMs = Math.max(MIN_STEP, BASE_STEP - Math.floor(score / 50) * 8);
       pop = 1;
       sfx.eat();
+      spawnBurst(food.x, food.y);
       placeFood();
     } else {
       snake.pop();
@@ -485,6 +489,52 @@
   }
 
   /* ---------------- drawing ---------------- */
+  /* ---------------- food burst ---------------- */
+  function spawnBurst(gx, gy) {
+    const cx = pfX + (gx + 0.5) * cw;
+    const cy = pfY + (gy + 0.5) * ch;
+    const n = 12;
+    for (let i = 0; i < n; i++) {
+      const angle = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+      const speed = cell * (0.004 + Math.random() * 0.006); // px per ms
+      particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        decay: 1 / (240 + Math.random() * 220),
+        size: Math.max(2, cell * (0.09 + Math.random() * 0.08))
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    if (!particles.length) return;
+    const drag = Math.pow(0.9, dt / 16.7);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= drag;
+      p.vy *= drag;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles() {
+    if (!particles.length) return;
+    ctx.fillStyle = INK;
+    for (const p of particles) {
+      const a = p.life < 0 ? 0 : p.life > 1 ? 1 : p.life;
+      const s = Math.max(1, Math.round(p.size * (0.35 + 0.65 * a)));
+      ctx.globalAlpha = a;
+      ctx.fillRect(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawField() {
     ctx.save();
     ctx.shadowColor = "rgba(150,200,95,0.30)";
@@ -635,6 +685,7 @@
     drawField();
     drawFood();
     drawSnake();
+    drawParticles();
 
     if (state === "start") drawStartScreen();
     else if (state === "paused") drawPauseScreen();
@@ -654,6 +705,7 @@
 
     blink += dt;
     if (pop > 0) pop = Math.max(0, pop - dt / 200);
+    updateParticles(dt);
 
     if (state === "playing") {
       acc += dt;
