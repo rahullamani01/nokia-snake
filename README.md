@@ -30,7 +30,9 @@ Swipe to steer on touch devices.
 ## Rules
 
 - Eat the pulsing square to grow and score 10 points.
-- Hitting a wall or your own tail ends the run.
+- Every so often a **green shield** appears for 3 seconds. Grab it for an extra life.
+- An extra life absorbs one crash and drops you back in the middle of the board with your score intact (max 3 saved).
+- Hitting a wall or your own tail with no lives left ends the run.
 - The snake speeds up every 50 points.
 - Your best score is saved in `localStorage`.
 
